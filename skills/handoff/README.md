@@ -55,87 +55,96 @@ python3 scripts/handoff.py ack --as claude <sha>
 ```
 
 `send` commits what you staged, pushes, and merges first if the remote moved. `pending` prints nothing when
-nothing waits.
+nothing waits. `wait` and `watch` run until a hand-off arrives; they have no time limit unless you pass
+`--timeout <seconds>`, and they fetch every 120 and 300 seconds (`--interval`).
 
 ## Setup
 
-Install (see the top-level README), commit, push. Then give each agent a way to be woken. Pick one per agent.
+1. Install (see the top-level README), commit, push.
+2. Tell each agent once: "Read the Hand-off protocol in AGENTS.md; your name is `<name>`."
+3. Give each agent one way to be woken, from the sections below. Use one per agent, or every hand-off is
+   delivered twice.
 
-| Agent runs as | Wake-up | Idle cost | Latency |
-|---|---|---|---|
-| Claude Code cloud session | Open a draft pull request for the branch and have the session subscribe to its activity. The installed workflow comments there on each hand-off to that agent. | none | seconds |
-| Codex desktop app or CLI | The watcher (below), started by the agent after each `send`, queues one message into the same session. | none | the poll interval |
-| Claude Code local session | `handoff.py wait --as <name>` as a background command inside the session, or the watcher with `claude -p --resume <session id> "$HANDOFF_MESSAGE"`. | none | the poll interval |
-| Anything headless | The watcher with whatever command starts the agent. | none | the poll interval |
-| Codex cloud | A monitoring task you create in the ChatGPT web UI with a GitHub trigger on the pull request. It wakes the same session. | one cloud run per pull-request event | not measured |
+Do not schedule the check inside an agent's chat. Every firing is a model turn, almost always to find nothing.
+Each mechanism below costs nothing while the agent waits, except where noted.
 
-The workflow wakes one agent, `claude` by default. Choose another with
-`install.py handoff <repo> --set WAKE_AGENT=<name>`.
+### Claude Code, cloud session
 
-Then tell each agent once: "Read the Hand-off protocol in AGENTS.md; your name is `<name>`."
+Open a draft pull request for the branch and have the session subscribe to its activity. The installed workflow
+comments there on each hand-off, and the comment wakes the session within seconds.
 
-### The watcher
+The workflow announces hand-offs for one agent, `claude` by default. Choose another with
+`install.py handoff <repo> --set WAKE_AGENT=<name>`. Only one session can hold a pull request's subscription.
 
-Do not schedule the check inside the agent's chat: every firing is a model turn, almost always to find nothing.
-`watch` is a plain process instead. It fetches the branch on an interval and runs your command once for each new
-hand-off, so nothing but `git fetch` runs while nothing is pending.
+### Claude Code, local session
 
-The agent starts it itself. Put this in its instructions: right after every `send`, start the watcher as a
-background job, then end the turn. For Codex:
+Right after every `send`, the agent runs this as a background command and ends its turn. The command exits when
+a hand-off arrives, which re-invokes the session.
+
+```bash
+python3 scripts/handoff.py wait --as claude
+```
+
+### Codex, desktop app or CLI
+
+A background job that finishes does not wake a Codex session, so the agent uses `watch`: a plain process that
+runs a command once for each new hand-off. Right after every `send`, the agent starts this as a background
+terminal and ends its turn.
 
 ```bash
 python3 scripts/handoff.py watch --as codex --until-delivered --run 'codex queue --thread "$CODEX_THREAD_ID" --message "$HANDOFF_MESSAGE"'
 ```
 
-- `codex queue --thread <id> --message <text>` queues a message for an existing Codex session, so the work
-  lands in the same thread and keeps its context. A busy thread takes it when it is idle.
+- `codex queue` queues a message for an existing Codex session, so the work lands in the same thread and keeps
+  its context. A busy thread takes it when it is idle.
 - Codex sets `CODEX_THREAD_ID` in the environment of the commands it runs, so nobody has to look the id up. That
   is in Codex's source, not in its documentation (November 2026): check `echo $CODEX_THREAD_ID` in your version.
-- `--until-delivered` exits once the next hand-off has been delivered, so polling runs only while the agent is
-  waiting. `--timeout <seconds>` also stops it after that long without one. A second watcher for the same agent
-  in the same clone refuses to start.
+- `--until-delivered` exits once the next hand-off has been delivered, so polling runs only while the agent
+  waits. A second watcher for the same agent in the same clone refuses to start.
 - `$HANDOFF_MESSAGE` is a fixed instruction that names the commit and tells the agent to run `pending`. No text
   from the commit is passed to your command.
 - Each hand-off is delivered once (the list is kept under `.git/`). A command that fails is tried again on the
-  next pass. A `PAUSE` file holds deliveries.
-- The watcher lives only while the thread stays loaded in the app. If the app is closed it is gone, so the
-  instructions should also say: run `pending` once when the thread is reopened.
+  next pass.
+- The watcher lives only while the thread stays loaded in the app. The agent's instructions should also say:
+  run `pending` once when the thread is reopened.
 - Codex's default sandbox blocks this: it has no network, a read-only `.git` and no write access to
-  `~/.codex`. The agent's sandbox must allow all three for `git fetch` and `codex queue` to work.
+  `~/.codex`. The agent's sandbox must allow all three.
 
-To run the watcher yourself instead (a terminal, tmux, or `--once` from cron or launchd), drop `--until-delivered`
-and put the thread id in place of `$CODEX_THREAD_ID`; the app's "Copy chat deep link" shows it as
-`codex://threads/<id>`.
+### Codex, cloud
 
-## What has been verified
+Create a monitoring task in the ChatGPT web UI: trigger GitHub, your repository, the pull request's number, an
+event that includes comments, and a prompt that tells the agent to run `pending`. The agent cannot create this
+task itself. The task wakes the same session.
 
-- `scripts/test_handoff.py` runs the whole cycle on throwaway repositories: addressee, ack, intermediate
-  commits, merge when the remote moved, a conflicting merge, concurrent hand-offs, `PAUSE`, `wait`, `watch`,
-  `announce`.
-- On a Claude Code cloud session (November 2026): the workflow commented about 10 seconds after a hand-off push,
-  and the comment woke the subscribed session about 3 seconds later. A push with no hand-off started no workflow
-  run and woke nobody.
-- A hand-off sent from a Codex desktop-app session woke the Claude Code cloud session, which acked it 45 seconds
-  after the hand-off commit was made.
-- Not yet observed by the authors: `watch` delivering into a Codex thread through `codex queue`. The command is
-  documented by Codex; the watcher itself is covered by the tests.
-- Codex cloud, sending: two dry-run hand-offs sent from a Codex cloud task reached the branch with their
-  trailers and log line, the workflow commented, and the Claude Code cloud session acked each within a minute.
-  The pushes went through ChatGPT's GitHub integration; a plain `git push --dry-run` from the task was also
-  accepted.
-- Codex cloud, receiving: the agent could not create a GitHub-triggered task itself. The user created one in
-  the ChatGPT web UI (repository, pull request number, event "pull requests and PR and review comments", runs
-  in the cloud). A comment posted by the workflow fired it and the run continued in the same session, as
-  reported by the user who ran the test. Such a task fires on every matching pull-request event, hand-off or
-  not, and each firing is a cloud run. The installed workflow announces hand-offs for one agent only, so a
-  second pull-request-woken agent also needs a second announcement.
+It fires on every matching pull-request event, hand-off or not, and each firing is a cloud run. The workflow
+comments only for the agent it was installed for, so to wake Codex cloud install with
+`--set WAKE_AGENT=<its name>`.
+
+### Anything else
+
+Run `watch` yourself (a terminal, tmux, or `--once` from cron or launchd) with whatever command starts or
+messages the agent.
+
+## Status
+
+Observed in November 2026, unless marked otherwise.
+
+| Agent | Sending | Being woken |
+|---|---|---|
+| Claude Code, cloud | Observed | Observed: the workflow commented about 10 s after the push, and the session woke about 3 s later. A push with no hand-off woke nobody. |
+| Claude Code, local | Same tool | Not yet run in a real session. `wait` is covered by the tests. |
+| Codex, desktop app | Observed: Claude acked 45 s after the commit | Not yet observed. `watch` is covered by the tests; `codex queue` is documented by Codex. |
+| Codex, cloud | Observed twice, pushed through ChatGPT's GitHub integration | Observed once by the user who ran the test: the workflow's comment fired the monitoring task in the same session. |
+
+`scripts/test_handoff.py` runs the whole cycle on throwaway repositories: addressee, ack, intermediate commits,
+merge when the remote moved, a conflicting merge, concurrent hand-offs, `PAUSE`, `wait`, `watch`, `announce`.
 
 ## Limits
 
-- Only one session can hold a pull request's subscription.
-- Local wake-ups need the watcher running, the agent's app open and the machine awake.
+- `PAUSE` holds hand-offs back but stops nothing: waiters keep polling, and agents woken through the pull
+  request are still woken and find nothing.
+- Local wake-ups need the agent's app or session open and the machine awake.
 - The workflow trusts everyone who can push to the branch. Pull-request comments are treated as untrusted: the
   skill tells the agent to act only on what `pending` reads from git.
 - An agent woken unattended must be allowed to `git push`; check its sandbox settings.
-- Run one wake-up mechanism per agent, or every hand-off is delivered twice.
 - In shallow clones `pending` only sees the fetched history.

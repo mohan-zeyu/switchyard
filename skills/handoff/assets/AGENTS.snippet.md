@@ -16,10 +16,13 @@ Check for work: `python3 scripts/handoff.py pending --as <your name>`. No output
 Full procedure: the `handoff` skill (`.claude/skills/handoff/SKILL.md`, `.agents/skills/handoff/SKILL.md`).
 
 How each agent is woken:
-- `__WAKE_AGENT__`: its session subscribes to the branch's draft pull request. The workflow
-  `.github/workflows/handoff-notify.yml` comments there on each `Handoff-To: __WAKE_AGENT__`.
-- `__PEER_AGENT__`: right after every `send` it starts
-  `python3 scripts/handoff.py watch --as __PEER_AGENT__ --until-delivered --run '<command that queues a message into its own session>'`
-  as a background job and ends its turn. The watcher is a plain process: it queues one message when the next
-  hand-off arrives, then exits. Never schedule the check inside the chat: every firing would be a model turn.
-  When its session is reopened, it runs the `pending` command above once.
+- `__WAKE_AGENT__`: through the branch's draft pull request. The workflow
+  `.github/workflows/handoff-notify.yml` comments there on each `Handoff-To: __WAKE_AGENT__`; a session that
+  follows the pull request (a subscribed Claude Code cloud session, or a ChatGPT monitoring task) is woken by
+  the comment.
+- `__PEER_AGENT__`: by a background job it starts itself right after every `send`, before ending its turn.
+  Where a finished background command re-invokes the session (Claude Code, local):
+  `python3 scripts/handoff.py wait --as __PEER_AGENT__`. Otherwise (Codex):
+  `python3 scripts/handoff.py watch --as __PEER_AGENT__ --until-delivered --run '<command that queues a message into its own session>'`.
+  Never schedule the check inside the chat: every firing would be a model turn. When its session is reopened,
+  it runs the `pending` command above once.
