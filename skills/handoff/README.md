@@ -94,6 +94,24 @@ python3 scripts/handoff.py watch --as codex --interval 300 --run 'codex queue --
   app's "Copy chat deep link" (`codex://threads/<id>`), and export it as `CODEX_THREAD`. Test it once by hand
   with a harmless message before relying on it.
 
+### Letting the agent run its own watcher
+
+The agent can start the watcher itself, so polling runs only while it is waiting and nobody looks up an id.
+Put this in its instructions: right after every `send`, start this as a background terminal and end the turn.
+
+```bash
+python3 scripts/handoff.py watch --as codex --until-delivered --run 'codex queue --thread "$CODEX_THREAD_ID" --message "$HANDOFF_MESSAGE"'
+```
+
+- `--until-delivered` exits once the next hand-off has been delivered. `--timeout <seconds>` also stops it after
+  that long without one. A second watcher for the same agent in the same clone refuses to start.
+- Codex sets `CODEX_THREAD_ID` in the environment of the commands it runs. That is in Codex's source, not in its
+  documentation (November 2026), so check `echo $CODEX_THREAD_ID` in your version.
+- The watcher lives only while the thread stays loaded in the app. If the app is closed it is gone, so the
+  instructions should also say: run `pending` once when the thread is reopened.
+- Codex's default sandbox blocks this: it has no network, a read-only `.git` and no write access to
+  `~/.codex`. The agent's sandbox must allow all three for `git fetch` and `codex queue` to work.
+
 ## What has been verified
 
 - `scripts/test_handoff.py` runs the whole cycle on throwaway repositories: addressee, ack, intermediate
@@ -104,8 +122,9 @@ python3 scripts/handoff.py watch --as codex --interval 300 --run 'codex queue --
   run and woke nobody.
 - A hand-off sent from a Codex desktop-app session woke the Claude Code cloud session, which acked it 45 seconds
   after the hand-off commit was made.
-- Not yet observed by the authors: `watch` delivering into a Codex thread through `codex queue`. The command is
-  documented by Codex; the watcher itself is covered by the tests.
+- Not yet observed by the authors: `watch` delivering into a Codex thread through `codex queue`, whether
+  started by hand or by the agent itself. The command is documented by Codex; the watcher itself is covered by
+  the tests.
 
 ## Limits
 
