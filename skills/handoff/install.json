@@ -1,0 +1,16 @@
+{
+  "description": "Git-native hand-offs between coding agents that share a branch",
+  "variables": {
+    "WAKE_AGENT": "claude",
+    "PEER_AGENT": "codex"
+  },
+  "files": [
+    {"from": "scripts/handoff.py", "to": "scripts/handoff.py"},
+    {"from": "scripts/test_handoff.py", "to": "scripts/test_handoff.py"},
+    {"from": "SKILL.md", "to": ".claude/skills/handoff/SKILL.md"},
+    {"from": "SKILL.md", "to": ".agents/skills/handoff/SKILL.md"},
+    {"from": "assets/handoff-notify.yml", "to": ".github/workflows/handoff-notify.yml"},
+    {"from": "assets/gitattributes", "to": ".gitattributes", "append": true, "marker": ".handoff/*.log"},
+    {"from": "assets/AGENTS.snippet.md", "to": "AGENTS.md", "append": true, "marker": "## Hand-off protocol"}
+  ]
+}

@@ -1,0 +1,37 @@
+# When a push contains a commit with the trailer "Handoff-To: __WAKE_AGENT__", comment on the branch's open pull
+# request. An agent session subscribed to that pull request is woken by the comment.
+# A workflow run can itself wake a subscribed session when its checks finish, so this runs only on pushes that
+# change .handoff/to-__WAKE_AGENT__.log, which `scripts/handoff.py send --to __WAKE_AGENT__` appends to.
+name: Hand-off notify
+
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['.handoff/to-__WAKE_AGENT__.log']
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - name: Announce hand-offs on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 scripts/handoff.py announce --to __WAKE_AGENT__ --before "$BEFORE" --after "$AFTER" > "$RUNNER_TEMP/body.md"
+          if [ ! -s "$RUNNER_TEMP/body.md" ]; then echo "No hand-off to __WAKE_AGENT__ in this push."; exit 0; fi
+          cat "$RUNNER_TEMP/body.md"
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then echo "::warning::Hand-off found but $BRANCH has no open pull request."; exit 0; fi
+          gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/body.md"
