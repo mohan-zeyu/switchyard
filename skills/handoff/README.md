@@ -13,6 +13,9 @@ woken, examines, acks
 notifies the user, stops
 ```
 
+To watch one round, see the animation in the [top-level README](../../README.md) or
+[docs/demo](../../docs/demo/README.md).
+
 ## Protocol
 
 | Trailer | Meaning |

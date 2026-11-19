@@ -6,6 +6,11 @@ Skills and workflows that let different coding agents (Claude Code, Codex, or an
 work on one repository without a person carrying messages between them. Everything travels through git, so it
 works across machines, vendors, cloud and local sessions.
 
+![One hand-off round: claude commits a brief with "Handoff-To: codex"; codex's recurring check finds it, pushes progress commits that wake nobody, then sends the report back; a workflow comments on the draft pull request, which wakes claude; claude checks the result, acks, notifies the user once and stops.](docs/demo/handoff-demo.gif)
+
+One round of the [`handoff`](skills/handoff/README.md) skill. Every command and its output come from a real run on
+throwaway repositories. [MP4 version](docs/demo/handoff-demo.mp4).
+
 ## Skills
 
 | Skill | What it does |
