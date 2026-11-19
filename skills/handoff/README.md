@@ -67,6 +67,7 @@ Install (see the top-level README), commit, push. Then give each agent a way to 
 | Codex desktop app or CLI | The watcher (below), started by the agent after each `send`, queues one message into the same session. | none | the poll interval |
 | Claude Code local session | `handoff.py wait --as <name>` as a background command inside the session, or the watcher with `claude -p --resume <session id> "$HANDOFF_MESSAGE"`. | none | the poll interval |
 | Anything headless | The watcher with whatever command starts the agent. | none | the poll interval |
+| Codex cloud | Untested. Its documented route is a scheduled task with a GitHub pull-request trigger, set to fire on comments and run in an existing chat. See "What has been verified". | none | unknown |
 
 The workflow wakes one agent, `claude` by default. Choose another with
 `install.py handoff <repo> --set WAKE_AGENT=<name>`.
@@ -118,6 +119,11 @@ and put the thread id in place of `$CODEX_THREAD_ID`; the app's "Copy chat deep 
   after the hand-off commit was made.
 - Not yet observed by the authors: `watch` delivering into a Codex thread through `codex queue`. The command is
   documented by Codex; the watcher itself is covered by the tests.
+- Codex cloud is untested in both directions (documentation read November 2026). Sending: a cloud task can run
+  commands, but pushing to an existing GitHub branch and the credentials for it are not documented. Receiving:
+  its scheduled tasks can trigger on pull-request comments and return to the same chat, but whether a comment
+  written by a workflow fires one is not documented. The installed workflow announces hand-offs for one agent
+  only, so a second pull-request-woken agent also needs a second announcement.
 
 ## Limits
 
