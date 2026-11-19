@@ -55,8 +55,8 @@ python3 scripts/handoff.py ack --as claude <sha>
 ```
 
 `send` commits what you staged, pushes, and merges first if the remote moved. `pending` prints nothing when
-nothing waits. `wait` and `watch` run until a hand-off arrives; they have no time limit unless you pass
-`--timeout <seconds>`, and they fetch every 120 and 300 seconds (`--interval`).
+nothing waits. `wait` and `watch` run until a hand-off arrives or one hour has passed without one
+(`--timeout <seconds>`; 0 for no limit), and they fetch every 120 and 300 seconds (`--interval`).
 
 ## Setup
 
@@ -79,7 +79,7 @@ The workflow announces hand-offs for one agent, `claude` by default. Choose anot
 ### Claude Code, local session
 
 Right after every `send`, the agent runs this as a background command and ends its turn. The command exits when
-a hand-off arrives, which re-invokes the session.
+a hand-off arrives or after one hour without one, which re-invokes the session.
 
 ```bash
 python3 scripts/handoff.py wait --as claude
@@ -105,8 +105,9 @@ python3 scripts/handoff.py watch --as codex --until-delivered --run 'codex queue
   from the commit is passed to your command.
 - Each hand-off is delivered once (the list is kept under `.git/`). A command that fails is tried again on the
   next pass.
-- The watcher lives only while the thread stays loaded in the app. The agent's instructions should also say:
-  run `pending` once when the thread is reopened.
+- The watcher stops after one hour without a hand-off, and lives only while the thread stays loaded in the
+  app. After either, nothing wakes the agent, so its instructions should also say: run `pending` once when
+  the thread is reopened or the user asks.
 - Codex's default sandbox blocks this: it has no network, a read-only `.git` and no write access to
   `~/.codex`. The agent's sandbox must allow all three.
 
