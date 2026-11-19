@@ -18,6 +18,8 @@ Full procedure: the `handoff` skill (`.claude/skills/handoff/SKILL.md`, `.agents
 How each agent is woken:
 - `__WAKE_AGENT__`: its session subscribes to the branch's draft pull request. The workflow
   `.github/workflows/handoff-notify.yml` comments there on each `Handoff-To: __WAKE_AGENT__`.
-- `__PEER_AGENT__`: a watcher outside the agent (`python3 scripts/handoff.py watch --as __PEER_AGENT__ --run ...`)
-  queues one message into its session for each new hand-off. Do not schedule the check inside the agent's chat:
-  every firing would be a model turn.
+- `__PEER_AGENT__`: right after every `send` it starts
+  `python3 scripts/handoff.py watch --as __PEER_AGENT__ --until-delivered --run '<command that queues a message into its own session>'`
+  as a background job and ends its turn. The watcher is a plain process: it queues one message when the next
+  hand-off arrives, then exits. Never schedule the check inside the chat: every firing would be a model turn.
+  When its session is reopened, it runs the `pending` command above once.

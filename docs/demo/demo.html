@@ -215,7 +215,7 @@ const vis = (t, a, b, f = .35) => clamp((t - a) / f) * clamp((b - t) / f);
 // ---- captions -------------------------------------------------------------------------------------------------
 const CAPS = [
   [6.0, 13.4, "1", "You ask for an experiment. claude writes a brief and sends it."],
-  [13.4, 19.0, "2", "codex’s recurring check runs <code class=mono>pending</code> and finds the brief."],
+  [13.4, 19.0, "2", "codex’s watcher (a script, no model) wakes it. <code class=mono>pending</code> shows the brief."],
   [19.0, 25.4, "3", "codex runs the job. Progress commits have no trailer: <em>they wake nobody.</em>"],
   [25.4, 29.6, "4", "Done. codex sends the report back and acks the brief."],
   [29.6, 35.0, "5", "A workflow comments on the draft PR. The comment wakes claude."],
@@ -244,7 +244,7 @@ function run(who, id, t, opts = {}) {
 }
 const clear = (who, t) => TERM[who].push({ t, type: "clear" });
 
-run("codex", "codex_idle", 6.6, { note: "prints nothing: nothing waits, the check ends quietly" });
+run("codex", "codex_idle", 6.6, { note: "prints nothing: nothing waits for codex yet" });
 run("claude", "claude_add", 8.0);
 const tSent = run("claude", "claude_send", 8.55);
 run("claude", "brief_msg", 10.9);
@@ -298,8 +298,8 @@ const STATUS = {
   claude: [[0, "idle", "idle"], [6.6, "writing a brief", "busy"], [tSent, "brief sent", "ok"],
            [13.4, "idle · not woken", "idle"], [31.9, "woken about 3 s after the comment", "wake"], [35.0, "examining the result", "busy"],
            [tAck, "acked", "ok"], [40.2, "stopped", "stopped"]],
-  codex: [[0, "recurring check", "idle"], [tFound, "found a hand-off", "wake"], [19.0, "running the sweep", "busy"],
-          [tReport, "report sent", "ok"], [29.6, "recurring check", "idle"]],
+  codex: [[0, "watcher · no model", "idle"], [tFound, "found a hand-off", "wake"], [19.0, "running the sweep", "busy"],
+          [tReport, "report sent", "ok"], [29.6, "watcher · no model", "idle"]],
 };
 const at = (list, t) => list.filter(k => k[0] <= t).pop();
 // claude window height over time; codex gets the rest. Big = 312, small = 146.

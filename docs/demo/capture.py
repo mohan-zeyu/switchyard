@@ -69,7 +69,7 @@ def main():
         quiet("claude", f"git checkout -q -b {BRANCH} && git add -A && git commit -q -m Start && git push -q -u origin {BRANCH}")
         sh(tmp, f"git clone -q {remote} codex", "codex")
 
-        # Before anything is sent, codex's recurring check prints nothing.
+        # Before anything is sent, nothing waits for codex.
         step("codex_idle", "codex", "python3 scripts/handoff.py pending --as codex")
 
         # 1. claude writes a brief and hands it to codex.

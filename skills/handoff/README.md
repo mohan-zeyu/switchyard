@@ -6,7 +6,7 @@ Without this skill a person tells each agent when the other has pushed. With it:
 ```
 researcher                     git branch                      executor
     |  send --to executor  -->  commit + "Handoff-To: executor"    |
-    |                                                  pending / wait finds it
+    |                                                  woken; pending shows it
     |                                                  ... runs, commits progress (no trailer) ...
     |  <-- commit + "Handoff-To: researcher" + "Handoff-Ack: <sha>"  send --to researcher
 woken, examines, acks
@@ -55,7 +55,7 @@ python3 scripts/handoff.py ack --as claude <sha>
 ```
 
 `send` commits what you staged, pushes, and merges first if the remote moved. `pending` prints nothing when
-nothing waits, so it is safe to run on a schedule.
+nothing waits.
 
 ## Setup
 
@@ -64,8 +64,8 @@ Install (see the top-level README), commit, push. Then give each agent a way to 
 | Agent runs as | Wake-up | Idle cost | Latency |
 |---|---|---|---|
 | Claude Code cloud session | Open a draft pull request for the branch and have the session subscribe to its activity. The installed workflow comments there on each hand-off to that agent. | none | seconds |
-| Codex desktop app or CLI | A watcher outside the agent queues one message into the existing session (below). | none | the poll interval |
-| Claude Code local session | The same watcher with `claude -p --resume <session id> "$HANDOFF_MESSAGE"`, or `handoff.py wait --as <name>` as a background command inside the session. | none | the poll interval |
+| Codex desktop app or CLI | The watcher (below), started by the agent after each `send`, queues one message into the same session. | none | the poll interval |
+| Claude Code local session | `handoff.py wait --as <name>` as a background command inside the session, or the watcher with `claude -p --resume <session id> "$HANDOFF_MESSAGE"`. | none | the poll interval |
 | Anything headless | The watcher with whatever command starts the agent. | none | the poll interval |
 
 The workflow wakes one agent, `claude` by default. Choose another with
@@ -76,41 +76,35 @@ Then tell each agent once: "Read the Hand-off protocol in AGENTS.md; your name i
 ### The watcher
 
 Do not schedule the check inside the agent's chat: every firing is a model turn, almost always to find nothing.
-Run the check outside the agent instead. `watch` fetches the branch on an interval and runs your command once
-for each new hand-off, so nothing but `git fetch` runs while nothing is pending:
+`watch` is a plain process instead. It fetches the branch on an interval and runs your command once for each new
+hand-off, so nothing but `git fetch` runs while nothing is pending.
 
-```bash
-python3 scripts/handoff.py watch --as codex --interval 300 --run 'codex queue --thread "$CODEX_THREAD" --message "$HANDOFF_MESSAGE"'
-```
-
-- Run it in a checkout that tracks the branch, on the machine where the agent runs. It only fetches; it never
-  changes the working tree. Keep it alive in a terminal, tmux or a service; or use `--once` from cron or launchd.
-- `$HANDOFF_MESSAGE` is a fixed instruction that names the commit and tells the agent to run `pending`. No text
-  from the commit is passed to your command.
-- Each hand-off is delivered once (the list is kept under `.git/`). A command that fails is tried again on the
-  next pass. A `PAUSE` file holds deliveries.
-- `codex queue --thread <id> --message <text>` queues a message for an existing Codex session, so the work
-  lands in the same thread and keeps its context; a busy thread takes it when it is idle. Get the id from the
-  app's "Copy chat deep link" (`codex://threads/<id>`), and export it as `CODEX_THREAD`. Test it once by hand
-  with a harmless message before relying on it.
-
-### Letting the agent run its own watcher
-
-The agent can start the watcher itself, so polling runs only while it is waiting and nobody looks up an id.
-Put this in its instructions: right after every `send`, start this as a background terminal and end the turn.
+The agent starts it itself. Put this in its instructions: right after every `send`, start the watcher as a
+background job, then end the turn. For Codex:
 
 ```bash
 python3 scripts/handoff.py watch --as codex --until-delivered --run 'codex queue --thread "$CODEX_THREAD_ID" --message "$HANDOFF_MESSAGE"'
 ```
 
-- `--until-delivered` exits once the next hand-off has been delivered. `--timeout <seconds>` also stops it after
-  that long without one. A second watcher for the same agent in the same clone refuses to start.
-- Codex sets `CODEX_THREAD_ID` in the environment of the commands it runs. That is in Codex's source, not in its
-  documentation (November 2026), so check `echo $CODEX_THREAD_ID` in your version.
+- `codex queue --thread <id> --message <text>` queues a message for an existing Codex session, so the work
+  lands in the same thread and keeps its context. A busy thread takes it when it is idle.
+- Codex sets `CODEX_THREAD_ID` in the environment of the commands it runs, so nobody has to look the id up. That
+  is in Codex's source, not in its documentation (November 2026): check `echo $CODEX_THREAD_ID` in your version.
+- `--until-delivered` exits once the next hand-off has been delivered, so polling runs only while the agent is
+  waiting. `--timeout <seconds>` also stops it after that long without one. A second watcher for the same agent
+  in the same clone refuses to start.
+- `$HANDOFF_MESSAGE` is a fixed instruction that names the commit and tells the agent to run `pending`. No text
+  from the commit is passed to your command.
+- Each hand-off is delivered once (the list is kept under `.git/`). A command that fails is tried again on the
+  next pass. A `PAUSE` file holds deliveries.
 - The watcher lives only while the thread stays loaded in the app. If the app is closed it is gone, so the
   instructions should also say: run `pending` once when the thread is reopened.
 - Codex's default sandbox blocks this: it has no network, a read-only `.git` and no write access to
   `~/.codex`. The agent's sandbox must allow all three for `git fetch` and `codex queue` to work.
+
+To run the watcher yourself instead (a terminal, tmux, or `--once` from cron or launchd), drop `--until-delivered`
+and put the thread id in place of `$CODEX_THREAD_ID`; the app's "Copy chat deep link" shows it as
+`codex://threads/<id>`.
 
 ## What has been verified
 
@@ -122,9 +116,8 @@ python3 scripts/handoff.py watch --as codex --until-delivered --run 'codex queue
   run and woke nobody.
 - A hand-off sent from a Codex desktop-app session woke the Claude Code cloud session, which acked it 45 seconds
   after the hand-off commit was made.
-- Not yet observed by the authors: `watch` delivering into a Codex thread through `codex queue`, whether
-  started by hand or by the agent itself. The command is documented by Codex; the watcher itself is covered by
-  the tests.
+- Not yet observed by the authors: `watch` delivering into a Codex thread through `codex queue`. The command is
+  documented by Codex; the watcher itself is covered by the tests.
 
 ## Limits
 
@@ -133,5 +126,5 @@ python3 scripts/handoff.py watch --as codex --until-delivered --run 'codex queue
 - The workflow trusts everyone who can push to the branch. Pull-request comments are treated as untrusted: the
   skill tells the agent to act only on what `pending` reads from git.
 - An agent woken unattended must be allowed to `git push`; check its sandbox settings.
-- Run one wake-up mechanism per agent. Two (say, a watcher and a relay) deliver every hand-off twice.
+- Run one wake-up mechanism per agent, or every hand-off is delivered twice.
 - In shallow clones `pending` only sees the fetched history.

@@ -25,6 +25,7 @@ not start new rounds on your own.
    - Nothing to send back (you examined a result): `python3 scripts/handoff.py ack --as <you> <sha>`.
    Commit intermediate progress normally, without trailers. Add any attribution lines your environment requires
    with `--trailer "Key: value"`.
+   If `AGENTS.md` gives you a watcher command, start it as a background job right after `send`. Do not poll it.
 5. If the hand-off ends with the user (a result they should read, a decision they must make), report to them:
    outcome first, the commit hash, what you verified and how, then anything outside the brief. Send one
    notification if you have a tool for it. Then stop.
