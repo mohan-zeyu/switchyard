@@ -67,7 +67,7 @@ Install (see the top-level README), commit, push. Then give each agent a way to 
 | Codex desktop app or CLI | The watcher (below), started by the agent after each `send`, queues one message into the same session. | none | the poll interval |
 | Claude Code local session | `handoff.py wait --as <name>` as a background command inside the session, or the watcher with `claude -p --resume <session id> "$HANDOFF_MESSAGE"`. | none | the poll interval |
 | Anything headless | The watcher with whatever command starts the agent. | none | the poll interval |
-| Codex cloud | Sending works. Receiving: a monitoring task you create in the ChatGPT web UI with a GitHub trigger on the pull request. See "What has been verified". | one cloud run per pull-request event | not measured |
+| Codex cloud | A monitoring task you create in the ChatGPT web UI with a GitHub trigger on the pull request. It wakes the same session. | one cloud run per pull-request event | not measured |
 
 The workflow wakes one agent, `claude` by default. Choose another with
 `install.py handoff <repo> --set WAKE_AGENT=<name>`.
@@ -123,11 +123,12 @@ and put the thread id in place of `$CODEX_THREAD_ID`; the app's "Copy chat deep 
   trailers and log line, the workflow commented, and the Claude Code cloud session acked each within a minute.
   The pushes went through ChatGPT's GitHub integration; a plain `git push --dry-run` from the task was also
   accepted.
-- Codex cloud, receiving: the agent could not create a GitHub-triggered task itself. The user can create one in
+- Codex cloud, receiving: the agent could not create a GitHub-triggered task itself. The user created one in
   the ChatGPT web UI (repository, pull request number, event "pull requests and PR and review comments", runs
-  in the cloud). Not yet recorded here: whether its runs keep the original chat's context. Such a task fires
-  on every matching pull-request event, hand-off or not, and each firing is a cloud run. The installed workflow
-  announces hand-offs for one agent only, so a second pull-request-woken agent also needs a second announcement.
+  in the cloud). A comment posted by the workflow fired it and the run continued in the same session, as
+  reported by the user who ran the test. Such a task fires on every matching pull-request event, hand-off or
+  not, and each firing is a cloud run. The installed workflow announces hand-offs for one agent only, so a
+  second pull-request-woken agent also needs a second announcement.
 
 ## Limits
 
