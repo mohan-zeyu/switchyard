@@ -31,3 +31,7 @@ the skill's README for the one-time setup. Python 3.8+ and git; no other depende
 - **Explicit signals.** An agent is woken by a hand-off, never by an ordinary push.
 - **The user decides direction.** Agents carry work across; they do not chain rounds on their own.
 - **Plain files.** A skill is a `SKILL.md` in the open Agent Skills format plus small standard-library scripts.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
