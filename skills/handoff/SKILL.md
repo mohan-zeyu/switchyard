@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Hand work to another coding agent, or pick up work handed to you, through commit trailers on a shared git branch. Use when a pull-request comment titled "Hand-off to <your name>" arrives, when a scheduled check or the user asks whether anything is waiting, or when work the user approved is ready for the other agent.
+description: Hand work to another coding agent, or pick up work handed to you, through commit trailers on a shared git branch. Use when a pull-request comment titled "Hand-off to <your name>" arrives, when a message says a hand-off is waiting for you, when the user asks whether anything is waiting, or when work the user approved is ready for the other agent.
 ---
 
 # Hand-off

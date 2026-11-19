@@ -1,6 +1,7 @@
 """Tests for scripts/handoff.py on throwaway repositories: one bare remote and two clones ("claude", "codex").
 
-1. A hand-off is pending only for its addressee, intermediate commits wake nobody, an ack clears it; `wait`.
+1. A hand-off is pending only for its addressee, intermediate commits wake nobody, an ack clears it; `wait`
+   returns or times out; `watch` runs its command once per new hand-off and retries a failed command.
 2. `send` merges and pushes again when the remote moved (the .handoff logs merge by union); PAUSE holds hand-offs.
 3. `announce` lists exactly the hand-offs of one push range; trailers are read from the last paragraph only.
 
@@ -81,6 +82,19 @@ def main():
         assert "PENDING hand-off for codex" in tool(codex, "wait", "--as", "codex", "--interval", "1").stdout
         idle = tool(claude, "wait", "--as", "claude", "--interval", "1", "--timeout", "1", ok=False)
         assert idle.returncode == 1 and idle.stdout == ""
+
+        # watch runs its command once per new hand-off, retries a failed command, and stays silent when idle.
+        out_file = os.path.join(tmp, "woken.txt")
+        record = f'printf "%s %s\\n" "$HANDOFF_AGENT" "$HANDOFF_SHA" >> "{out_file}"; echo "$HANDOFF_MESSAGE" >> "{out_file}"'
+        failed = tool(codex, "watch", "--as", "codex", "--once", "--run", "exit 3")
+        assert "exited 3" in failed.stderr and not os.path.exists(out_file)
+        tool(codex, "watch", "--as", "codex", "--once", "--run", record)
+        tool(codex, "watch", "--as", "codex", "--once", "--run", record)
+        woken = Path(out_file).read_text().splitlines()
+        assert woken[0] == f"codex {brief}" and len(woken) == 2, woken
+        assert f"at commit {brief}" in woken[1] and "pending --as codex" in woken[1]
+        tool(claude, "watch", "--as", "claude", "--once", "--run", record)
+        assert len(Path(out_file).read_text().splitlines()) == 2
 
         # Intermediate commits carry no trailer and change nothing.
         run(codex, "git", "pull", "-q", "--ff-only")

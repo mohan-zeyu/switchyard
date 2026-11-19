@@ -10,6 +10,7 @@ Agent names are free-form lowercase words (claude, codex, researcher, gpu ...).
 
   python3 scripts/handoff.py pending --as codex            # fetch, list what waits for codex (prints nothing if none)
   python3 scripts/handoff.py wait --as codex               # block until something waits for codex, print it, exit
+  python3 scripts/handoff.py watch --as codex --run CMD    # run CMD once per new hand-off; no agent runs while idle
   python3 scripts/handoff.py send --as claude --to codex --brief BRIEF.md -m "Subject" -m "Body"
   python3 scripts/handoff.py send --as codex --to claude --ack <sha> --status done -m "Report"
   python3 scripts/handoff.py ack --as claude <sha>         # empty commit, when the answer needs no other commit
@@ -218,6 +219,39 @@ def cmd_wait(args):
         time.sleep(args.interval)
 
 
+def cmd_watch(args):
+    """Run a command once for each new hand-off to the agent. Nothing but git runs while nothing is pending."""
+    name = agent_name(args.as_name)
+    state = git("rev-parse", "--git-path", f"handoff-notified-{name}").stdout.strip()
+    while True:
+        try:
+            waiting, _, _ = look(args, name)
+        except SystemExit as error:  # e.g. the network is down: keep watching unless this is a single pass
+            if args.once:
+                raise
+            print(error, file=sys.stderr, flush=True)
+            waiting = []
+        seen = set(open(state).read().split()) if os.path.exists(state) else set()
+        for c in waiting:
+            if c["sha"] in seen:
+                continue
+            message = (f"A hand-off is waiting for {name} at commit {c['sha']}. Run "
+                       f"`python3 scripts/handoff.py pending --as {name}` and carry out what it prints, "
+                       f"following the Hand-off protocol in AGENTS.md.")
+            env = {**os.environ, "HANDOFF_AGENT": name, "HANDOFF_SHA": c["sha"], "HANDOFF_MESSAGE": message}
+            code = subprocess.run(args.run, shell=True, env=env).returncode
+            if code == 0:
+                with open(state, "a") as handle:
+                    handle.write(c["sha"] + "\n")
+                print(f"handoff: notified {name} of {c['sha']}", flush=True)
+            else:
+                print(f"handoff: the --run command exited {code} for {c['sha']}; it will be tried again",
+                      file=sys.stderr, flush=True)
+        if args.once:
+            return
+        time.sleep(args.interval)
+
+
 def cmd_send(args):
     sender, to = agent_name(args.as_name), agent_name(args.to, "--to")
     if not args.message:
@@ -290,7 +324,7 @@ def main():
     p.add_argument("--no-fetch", action="store_true")
     p.add_argument("--ignore-pause", action="store_true")
     p.add_argument("--json", action="store_true")
-    p.set_defaults(run=cmd_pending)
+    p.set_defaults(func=cmd_pending)
 
     p = sub.add_parser("wait", parents=[common], help="block until a hand-off waits for an agent")
     p.add_argument("--as", dest="as_name", help="who is waiting (default $HANDOFF_AGENT)")
@@ -298,7 +332,16 @@ def main():
     p.add_argument("--timeout", type=int, default=0, help="give up after this many seconds (default: never)")
     p.add_argument("--ignore-pause", action="store_true")
     p.add_argument("--json", action="store_true")
-    p.set_defaults(run=cmd_wait)
+    p.set_defaults(func=cmd_wait)
+
+    p = sub.add_parser("watch", parents=[common], help="run a command once per new hand-off (no agent runs while idle)")
+    p.add_argument("--as", dest="as_name", help="whose hand-offs to watch (default $HANDOFF_AGENT)")
+    p.add_argument("--run", required=True, help="shell command to run for each new hand-off; it gets "
+                   "$HANDOFF_MESSAGE (a fixed instruction naming the commit), $HANDOFF_SHA and $HANDOFF_AGENT")
+    p.add_argument("--interval", type=int, default=300, help="seconds between fetches (default 300)")
+    p.add_argument("--once", action="store_true", help="one pass and exit, for cron or launchd")
+    p.add_argument("--ignore-pause", action="store_true")
+    p.set_defaults(func=cmd_watch)
 
     p = sub.add_parser("send", parents=[common, writing], help="commit the staged files as a hand-off and push")
     p.add_argument("--as", dest="as_name")
@@ -307,21 +350,21 @@ def main():
     p.add_argument("--brief", help="path of the brief the receiver should read")
     p.add_argument("--status", help="e.g. done, interrupted, question")
     p.add_argument("--allow-empty", action="store_true")
-    p.set_defaults(run=cmd_send)
+    p.set_defaults(func=cmd_send)
 
     p = sub.add_parser("ack", parents=[common, writing], help="push an empty commit that acks hand-offs")
     p.add_argument("--as", dest="as_name")
     p.add_argument("sha", nargs="+")
-    p.set_defaults(run=cmd_ack)
+    p.set_defaults(func=cmd_ack)
 
     p = sub.add_parser("announce", help="markdown for the hand-offs in one push (GitHub workflow)")
     p.add_argument("--to", required=True)
     p.add_argument("--before", required=True)
     p.add_argument("--after", required=True)
-    p.set_defaults(run=cmd_announce)
+    p.set_defaults(func=cmd_announce)
 
     args = parser.parse_args()
-    args.run(args)
+    args.func(args)
 
 
 if __name__ == "__main__":
